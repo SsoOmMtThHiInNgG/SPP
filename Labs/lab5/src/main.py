@@ -9,6 +9,7 @@ from sqlalchemy import Float
 from sqlalchemy import ForeignKey
 from sqlalchemy import Integer
 from sqlalchemy import String
+from sqlalchemy import UniqueConstraint
 from sqlalchemy import create_engine
 
 from sqlalchemy.orm import declarative_base
@@ -34,6 +35,9 @@ SessionLocal = sessionmaker(
 )
 
 Base = declarative_base()
+
+def is_empty(value):
+    return value is None or (isinstance(value, str) and not value.strip())
 class Station(Base):
     __tablename__ = "stations"
 
@@ -181,6 +185,10 @@ class Schedule(Base):
 class Ticket(Base):
     __tablename__ = "tickets"
 
+    __table_args__ = (
+        UniqueConstraint("train_id", "seat_number", name="unique_train_seat"),
+    )
+
     id = Column(
         Integer,
         primary_key=True,
@@ -252,11 +260,14 @@ def add_station(
     name: str,
     city: str,
 ):
+    if is_empty(name) or is_empty(city):
+        return {"message": "Все поля должны быть заполнены"}
+
     session = SessionLocal()
 
     station = Station(
-        name=name,
-        city=city,
+        name=name.strip(),
+        city=city.strip(),
     )
 
     session.add(station)
@@ -324,12 +335,16 @@ def add_train(
     arrival_station: str,
     price: float,
 ):
+    if (is_empty(number) or is_empty(departure_station) or
+            is_empty(arrival_station) or price is None or price <= 0):
+        return {"message": "Все поля должны быть заполнены корректно"}
+
     session = SessionLocal()
 
     train = Train(
-        number=number,
-        departure_station=departure_station,
-        arrival_station=arrival_station,
+        number=number.strip(),
+        departure_station=departure_station.strip(),
+        arrival_station=arrival_station.strip(),
         price=price,
     )
 
@@ -396,11 +411,14 @@ def add_passenger(
     full_name: str,
     passport: str,
 ):
+    if is_empty(full_name) or is_empty(passport):
+        return {"message": "Все поля должны быть заполнены"}
+
     session = SessionLocal()
 
     passenger = Passenger(
-        full_name=full_name,
-        passport=passport,
+        full_name=full_name.strip(),
+        passport=passport.strip(),
     )
 
     session.add(passenger)
@@ -468,6 +486,9 @@ def add_schedule(
     arrival_time: str,
     trip_date: str,
 ):
+    if is_empty(departure_time) or is_empty(arrival_time) or is_empty(trip_date):
+        return {"message": "Все поля должны быть заполнены"}
+
     session = SessionLocal()
 
     schedule = Schedule(
@@ -541,12 +562,24 @@ def buy_ticket(
     train_id: int,
     seat_number: str,
 ):
+    if is_empty(seat_number):
+        return {"message": "Все поля должны быть заполнены"}
+
     session = SessionLocal()
+
+    occupied_seat = session.query(Ticket).filter(
+        Ticket.train_id == train_id,
+        Ticket.seat_number == seat_number.strip()
+    ).first()
+
+    if occupied_seat:
+        session.close()
+        return {"message": "Место занято"}
 
     ticket = Ticket(
         passenger_id=passenger_id,
         train_id=train_id,
-        seat_number=seat_number,
+        seat_number=seat_number.strip(),
     )
 
     session.add(ticket)
@@ -1342,17 +1375,26 @@ document
 .innerHTML = html;
 
 }
+function validateFields(fields){
+    return fields.every(value => value.trim() !== "");
+}
+
 async function addStation(){
 
 const name =
 document.getElementById(
 "station-name"
-).value;
+).value.trim();
 
 const city =
 document.getElementById(
 "station-city"
-).value;
+).value.trim();
+
+if(!name || !city){
+alert("Заполните все поля!");
+return;
+}
 
 await fetch(
 `/api/stations?name=${encodeURIComponent(name)}&city=${encodeURIComponent(city)}`,
@@ -1366,28 +1408,32 @@ loadStats();
 
 }
 
-
 async function addTrain(){
 
 const number =
 document.getElementById(
 "train-number"
-).value;
+).value.trim();
 
 const from =
 document.getElementById(
 "train-from"
-).value;
+).value.trim();
 
 const to =
 document.getElementById(
 "train-to"
-).value;
+).value.trim();
 
 const price =
 document.getElementById(
 "train-price"
 ).value;
+
+if(!number || !from || !to || !price){
+alert("Заполните все поля!");
+return;
+}
 
 await fetch(
 `/api/trains?number=${encodeURIComponent(number)}&departure_station=${encodeURIComponent(from)}&arrival_station=${encodeURIComponent(to)}&price=${price}`,
@@ -1401,18 +1447,22 @@ loadStats();
 
 }
 
-
 async function addPassenger(){
 
 const name =
 document.getElementById(
 "passenger-name"
-).value;
+).value.trim();
 
 const passport =
 document.getElementById(
 "passenger-passport"
-).value;
+).value.trim();
+
+if(!name || !passport){
+alert("Заполните все поля!");
+return;
+}
 
 await fetch(
 `/api/passengers?full_name=${encodeURIComponent(name)}&passport=${encodeURIComponent(passport)}`,
@@ -1425,28 +1475,32 @@ loadPassengers();
 
 }
 
-
 async function addSchedule(){
 
 const trainId =
 document.getElementById(
 "schedule-train"
-).value;
+).value.trim();
 
 const date =
 document.getElementById(
 "schedule-date"
-).value;
+).value.trim();
 
 const departure =
 document.getElementById(
 "schedule-departure"
-).value;
+).value.trim();
 
 const arrival =
 document.getElementById(
 "schedule-arrival"
-).value;
+).value.trim();
+
+if(!trainId || !date || !departure || !arrival){
+alert("Заполните все поля!");
+return;
+}
 
 await fetch(
 `/api/schedules?train_id=${trainId}&departure_time=${departure}&arrival_time=${arrival}&trip_date=${date}`,
@@ -1459,35 +1513,48 @@ loadSchedules();
 
 }
 
-
 async function buyTicket(){
 
 const passenger =
 document.getElementById(
 "ticket-passenger"
-).value;
+).value.trim();
 
 const train =
 document.getElementById(
 "ticket-train"
-).value;
+).value.trim();
 
 const seat =
 document.getElementById(
 "ticket-seat"
-).value;
+).value.trim();
 
-await fetch(
-`/api/tickets?passenger_id=${passenger}&train_id=${train}&seat_number=${seat}`,
+if(!passenger || !train || !seat){
+alert("Заполните все поля!");
+return;
+}
+
+const response = await fetch(
+`/api/tickets?passenger_id=${encodeURIComponent(passenger)}&train_id=${encodeURIComponent(train)}&seat_number=${encodeURIComponent(seat)}`,
 {
 method:"POST"
 }
 );
 
+const result = await response.json();
+
+if(result.message === "Место занято"){
+alert("Место занято!");
+return;
+}
+
 loadTickets();
 loadStats();
 
 }
+
+
 loadStats();
 loadStations();
 loadTrains();
@@ -1505,4 +1572,4 @@ loadTickets();
     response_class=HTMLResponse,
 )
 def home():
-    return HTML_PAGE                                                             
+    return HTML_PAGE 
